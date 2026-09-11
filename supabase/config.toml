@@ -1,0 +1,7 @@
+project_id = "pdhctzajmlhpdgzrrhvd"
+
+[functions.analyze-resume]
+verify_jwt = false
+
+[functions.interview-questions]
+verify_jwt = false
