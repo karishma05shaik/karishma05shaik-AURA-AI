@@ -6,6 +6,12 @@ export interface Profile {
   created_at: string;
 }
 
+export interface AchievementItem {
+  id: string;
+  title: string;
+  description: string;
+}
+
 export interface ResumeData {
   name: string;
   email: string;
@@ -19,6 +25,7 @@ export interface ResumeData {
   skills: string[];
   projects: ProjectItem[];
   certifications: string[];
+  achievements: AchievementItem[];
 }
 
 export interface ExperienceItem {

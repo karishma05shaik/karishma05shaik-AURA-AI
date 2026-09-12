@@ -1,6 +1,8 @@
 import { useState, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { analyzeResume } from '@/lib/resumeAnalyzer';
+import { getInterviewQuestions } from '@/lib/interviewQuestions';
 import { AnalysisResult, InterviewQuestion } from '@/types';
 import {
   Upload, FileText, Loader2, CheckCircle2, AlertCircle, X,
@@ -16,9 +18,7 @@ export default function AnalyzeResume() {
   const [error, setError] = useState('');
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [fileName, setFileName] = useState('');
-  const [interviewLoading, setInterviewLoading] = useState(false);
   const [interviewQuestions, setInterviewQuestions] = useState<InterviewQuestion[] | null>(null);
-  const [interviewError, setInterviewError] = useState('');
   const [expandedQ, setExpandedQ] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -39,7 +39,6 @@ export default function AnalyzeResume() {
       }
       return text;
     } else if (file.type.startsWith('image/')) {
-      // For images, we'll send a note that text extraction is limited
       return `[Resume image uploaded: ${file.name}. Note: Image-based resume analysis may be limited.]`;
     }
     return '';
@@ -57,31 +56,9 @@ export default function AnalyzeResume() {
 
     try {
       const resumeText = await extractTextFromFile(file);
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-resume`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({ resumeText, jobRole, fileName }),
-        }
-      );
-
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || `Analysis failed (${response.status})`);
-      }
-
-      const data = await response.json();
-      if (data.error) throw new Error(data.error);
-
-      const analysis = data.analysis as AnalysisResult;
+      const analysis = analyzeResume(resumeText, jobRole);
       setResult(analysis);
 
-      // Save to database
       if (profile) {
         await supabase.from('analyses').insert({
           profile_id: profile.id,
@@ -92,42 +69,15 @@ export default function AnalyzeResume() {
         });
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to analyze resume. Make sure the OpenAI API key is configured.');
+      setError(err.message || 'Failed to analyze resume.');
     }
     setLoading(false);
   }
 
-  async function handleGetInterviewQuestions() {
+  function handleGetInterviewQuestions() {
     if (!jobRole.trim()) return;
-    setInterviewLoading(true);
-    setInterviewError('');
-
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/interview-questions`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({ jobRole }),
-        }
-      );
-
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || `Request failed (${response.status})`);
-      }
-
-      const data = await response.json();
-      if (data.error) throw new Error(data.error);
-
-      setInterviewQuestions(data.questions);
-    } catch (err: any) {
-      setInterviewError(err.message || 'Failed to get interview questions');
-    }
-    setInterviewLoading(false);
+    const questions = getInterviewQuestions(jobRole);
+    setInterviewQuestions(questions);
   }
 
   function handleFileSelect(f: File) {
@@ -434,7 +384,7 @@ export default function AnalyzeResume() {
                 </div>
               </div>
 
-              {!interviewQuestions && !interviewLoading && (
+              {!interviewQuestions && (
                 <button
                   onClick={handleGetInterviewQuestions}
                   className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-xl transition-all flex items-center gap-2"
@@ -442,17 +392,6 @@ export default function AnalyzeResume() {
                   <Sparkles className="w-4 h-4" />
                   Yes, provide interview questions
                 </button>
-              )}
-
-              {interviewLoading && (
-                <div className="flex items-center gap-2 text-blue-600">
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  <span className="text-sm">Generating interview questions...</span>
-                </div>
-              )}
-
-              {interviewError && (
-                <p className="text-sm text-red-600">{interviewError}</p>
               )}
 
               {interviewQuestions && (

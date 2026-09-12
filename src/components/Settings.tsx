@@ -20,6 +20,7 @@ export default function Settings() {
   const [newPhone, setNewPhone] = useState('');
   const [phoneOTP, setPhoneOTP] = useState('');
   const [phoneStep, setPhoneStep] = useState<'enter' | 'verify'>('enter');
+  const [phoneDemoCode, setPhoneDemoCode] = useState<string | null>(null);
 
   // Delete account state
   const [deleteConfirm, setDeleteConfirm] = useState('');
@@ -53,6 +54,7 @@ export default function Settings() {
       setLoading(false);
       if (result.success) {
         setPhoneStep('verify');
+        setPhoneDemoCode(result.demoCode || null);
       } else {
         setError(result.error || 'Failed to send OTP');
       }
@@ -105,7 +107,7 @@ export default function Settings() {
     reader.readAsDataURL(file);
   }
 
-  const demoOTP = activeModal === 'change-phone' && phoneStep === 'verify' ? localStorage.getItem('aura_demo_otp') : '';
+  const demoOTP = phoneDemoCode;
 
   const settings = [
     { id: 'change-number', label: 'Change Number', icon: Phone, desc: 'Update your phone number', danger: false },
@@ -245,8 +247,8 @@ export default function Settings() {
                 </div>
                 <p className="text-sm text-gray-500 mb-3">OTP sent to {newPhone}</p>
                 {demoOTP && (
-                  <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 mb-3">
-                    <p className="text-xs text-blue-700"><span className="font-semibold">Demo OTP:</span> {demoOTP}</p>
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+                    <p className="text-xs text-amber-700"><span className="font-semibold">Demo mode:</span> WhatsApp API not configured. Your OTP is <span className="font-bold">{demoOTP}</span></p>
                   </div>
                 )}
                 <div>

@@ -1,10 +1,10 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, forwardRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ResumeData, ExperienceItem, EducationItem, ProjectItem } from '@/types';
+import { ResumeData, ExperienceItem, EducationItem, ProjectItem, AchievementItem } from '@/types';
 import {
   Plus, Trash2, Download, Share2, Edit3, FileDown, ChevronLeft, ChevronRight,
-  Briefcase, GraduationCap, Wrench, FolderGit2, Award, User, Check, X,
+  Briefcase, GraduationCap, Wrench, FolderGit2, Award, User, Check, X, Trophy,
 } from 'lucide-react';
 
 interface CreateResumeProps {
@@ -14,12 +14,12 @@ interface CreateResumeProps {
 }
 
 const TEMPLATES = [
-  { id: 'modern', name: 'Modern', colors: { primary: '#2563eb', accent: '#3b82f6', bg: '#f8fafc' } },
-  { id: 'classic', name: 'Classic', colors: { primary: '#1e293b', accent: '#475569', bg: '#ffffff' } },
-  { id: 'elegant', name: 'Elegant', colors: { primary: '#0f766e', accent: '#14b8a6', bg: '#f0fdfa' } },
-  { id: 'minimal', name: 'Minimal', colors: { primary: '#374151', accent: '#6b7280', bg: '#ffffff' } },
-  { id: 'creative', name: 'Creative', colors: { primary: '#7c3aed', accent: '#8b5cf6', bg: '#faf5ff' } },
-  { id: 'professional', name: 'Professional', colors: { primary: '#1e40af', accent: '#2563eb', bg: '#eff6ff' } },
+  { id: 'modern', name: 'Modern', colors: { primary: '#1e3a5f', accent: '#2563eb', bg: '#ffffff', text: '#1f2937', light: '#6b7280' } },
+  { id: 'classic', name: 'Classic', colors: { primary: '#1a1a1a', accent: '#333333', bg: '#ffffff', text: '#1a1a1a', light: '#666666' } },
+  { id: 'elegant', name: 'Elegant', colors: { primary: '#0f4c3a', accent: '#0f766e', bg: '#ffffff', text: '#1f2937', light: '#6b7280' } },
+  { id: 'minimal', name: 'Minimal', colors: { primary: '#374151', accent: '#6b7280', bg: '#ffffff', text: '#1f2937', light: '#9ca3af' } },
+  { id: 'creative', name: 'Creative', colors: { primary: '#9333ea', accent: '#a855f7', bg: '#ffffff', text: '#1f2937', light: '#6b7280' } },
+  { id: 'professional', name: 'Professional', colors: { primary: '#1e40af', accent: '#2563eb', bg: '#ffffff', text: '#1f2937', light: '#6b7280' } },
 ];
 
 function genId() {
@@ -35,6 +35,7 @@ function emptyResume(): ResumeData {
     skills: [],
     projects: [],
     certifications: [],
+    achievements: [],
   };
 }
 
@@ -43,7 +44,7 @@ export default function CreateResume({ editingResume, onSaved, onCancel }: Creat
   const [step, setStep] = useState<'details' | 'template' | 'preview'>('details');
   const [data, setData] = useState<ResumeData>(() => {
     if (editingResume?.data) {
-      return editingResume.data;
+      return { ...emptyResume(), ...editingResume.data };
     }
     const base = emptyResume();
     if (profile) {
@@ -95,6 +96,16 @@ export default function CreateResume({ editingResume, onSaved, onCancel }: Creat
     update('projects', data.projects.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
   }
 
+  function addAchievement() {
+    update('achievements', [...data.achievements, { id: genId(), title: '', description: '' }]);
+  }
+  function removeAchievement(id: string) {
+    update('achievements', data.achievements.filter((a) => a.id !== id));
+  }
+  function updateAchievement(id: string, field: keyof AchievementItem, value: string) {
+    update('achievements', data.achievements.map((a) => (a.id === id ? { ...a, [field]: value } : a)));
+  }
+
   function addSkill() {
     if (skillInput.trim() && !data.skills.includes(skillInput.trim())) {
       update('skills', [...data.skills, skillInput.trim()]);
@@ -130,7 +141,7 @@ export default function CreateResume({ editingResume, onSaved, onCancel }: Creat
           .insert({ profile_id: profile.id, title, template, data });
       }
       setShowActions(true);
-    } catch (err) {
+    } catch {
       alert('Failed to save resume');
     }
     setSaving(false);
@@ -167,8 +178,21 @@ export default function CreateResume({ editingResume, onSaved, onCancel }: Creat
   }
 
   function handleExport(format: string) {
-    const content = JSON.stringify(data, null, 2);
-    const blob = new Blob([content], { type: 'application/json' });
+    let content: string;
+    let mimeType: string;
+
+    if (format === 'json') {
+      content = JSON.stringify(data, null, 2);
+      mimeType = 'application/json';
+    } else if (format === 'txt') {
+      content = formatResumeAsText(data);
+      mimeType = 'text/plain';
+    } else {
+      content = formatResumeAsHTML(data, selectedTemplate);
+      mimeType = 'text/html';
+    }
+
+    const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -182,7 +206,6 @@ export default function CreateResume({ editingResume, onSaved, onCancel }: Creat
     if (navigator.share) {
       navigator.share({ title: 'My Resume', text: shareText });
     } else {
-      // Open share options
       const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
       window.open(whatsappUrl, '_blank');
     }
@@ -196,12 +219,13 @@ export default function CreateResume({ editingResume, onSaved, onCancel }: Creat
     { id: 'skills', label: 'Skills', icon: Wrench },
     { id: 'projects', label: 'Projects', icon: FolderGit2 },
     { id: 'certifications', label: 'Certifications', icon: Award },
+    { id: 'achievements', label: 'Achievements', icon: Trophy },
   ];
 
   const selectedTemplate = TEMPLATES.find((t) => t.id === template) || TEMPLATES[0];
 
   return (
-    <div className="min-h-screen bg-gray-50 lg:pl-0">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="sticky top-0 bg-white border-b border-gray-200 z-20 px-4 lg:px-8 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3 ml-12 lg:ml-0">
@@ -346,7 +370,7 @@ export default function CreateResume({ editingResume, onSaved, onCancel }: Creat
                     <textarea
                       value={data.summary}
                       onChange={(e) => update('summary', e.target.value)}
-                      placeholder="Write a brief professional summary..."
+                      placeholder="Write a brief professional summary highlighting your experience, key skills, and career goals..."
                       rows={5}
                       className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-none"
                     />
@@ -382,7 +406,7 @@ export default function CreateResume({ editingResume, onSaved, onCancel }: Creat
                           <textarea
                             value={exp.description}
                             onChange={(e) => updateExperience(exp.id, 'description', e.target.value)}
-                            placeholder="Describe your responsibilities and achievements..."
+                            placeholder="Describe your responsibilities and achievements. Use action verbs and include metrics where possible."
                             rows={3}
                             className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-none"
                           />
@@ -421,7 +445,7 @@ export default function CreateResume({ editingResume, onSaved, onCancel }: Creat
                           <textarea
                             value={edu.description}
                             onChange={(e) => updateEducation(edu.id, 'description', e.target.value)}
-                            placeholder="Additional details..."
+                            placeholder="Additional details, honors, relevant coursework..."
                             rows={2}
                             className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-none"
                           />
@@ -526,6 +550,41 @@ export default function CreateResume({ editingResume, onSaved, onCancel }: Creat
                   </div>
                 )}
 
+                {activeSection === 'achievements' && (
+                  <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold text-gray-900">Achievements</h3>
+                      <button onClick={addAchievement} className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center gap-1">
+                        <Plus className="w-4 h-4" /> Add
+                      </button>
+                    </div>
+                    {data.achievements.length === 0 && (
+                      <p className="text-sm text-gray-400 text-center py-4">No achievements added yet</p>
+                    )}
+                    {data.achievements.map((ach, i) => (
+                      <div key={ach.id} className="border border-gray-100 rounded-xl p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-gray-400">Achievement {i + 1}</span>
+                          <button onClick={() => removeAchievement(ach.id)} className="text-red-400 hover:text-red-500">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <Field label="Title" value={ach.title} onChange={(v) => updateAchievement(ach.id, 'title', v)} placeholder="Employee of the Year" />
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Description</label>
+                          <textarea
+                            value={ach.description}
+                            onChange={(e) => updateAchievement(ach.id, 'description', e.target.value)}
+                            placeholder="Describe the achievement and its impact..."
+                            rows={2}
+                            className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-none"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {/* Mobile section nav */}
                 <div className="md:hidden flex gap-2 overflow-x-auto pb-2">
                   {sections.map((s) => (
@@ -558,7 +617,7 @@ export default function CreateResume({ editingResume, onSaved, onCancel }: Creat
                     template === t.id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
-                  <div className="aspect-[3/4] p-4" style={{ background: t.colors.bg }}>
+                  <div className="aspect-[3/4] p-4 bg-white">
                     <div className="h-3 rounded mb-2" style={{ background: t.colors.primary, width: '60%' }} />
                     <div className="h-2 rounded mb-1" style={{ background: t.colors.accent, width: '40%' }} />
                     <div className="h-2 rounded mb-3" style={{ background: t.colors.accent, width: '50%' }} />
@@ -593,8 +652,11 @@ export default function CreateResume({ editingResume, onSaved, onCancel }: Creat
               <h3 className="text-xl font-bold text-gray-900">Preview</h3>
               <p className="text-sm text-gray-500">Template: {selectedTemplate.name}</p>
             </div>
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-              <ResumePreview data={data} template={selectedTemplate} ref={resumePreviewRef} />
+            {/* A4 Paper Container */}
+            <div className="flex justify-center">
+              <div className="shadow-xl rounded-sm overflow-hidden" style={{ width: '210mm', maxWidth: '100%' }}>
+                <ResumePreview data={data} template={selectedTemplate} ref={resumePreviewRef} />
+              </div>
             </div>
             {showActions && (
               <div className="mt-6 bg-blue-50 rounded-xl p-4 flex items-center gap-3">
@@ -624,107 +686,245 @@ function Field({ label, value, onChange, placeholder }: { label: string; value: 
   );
 }
 
-import { forwardRef } from 'react';
+function formatResumeAsText(data: ResumeData): string {
+  const lines: string[] = [];
+  lines.push(data.name || '');
+  if (data.email) lines.push(data.email);
+  if (data.phone) lines.push(data.phone);
+  if (data.location) lines.push(data.location);
+  if (data.linkedin) lines.push(data.linkedin);
+  if (data.website) lines.push(data.website);
+  lines.push('');
+  if (data.summary) { lines.push('SUMMARY'); lines.push(data.summary); lines.push(''); }
+  if (data.experience.some((e) => e.role || e.company)) {
+    lines.push('EXPERIENCE');
+    for (const exp of data.experience) {
+      if (exp.role || exp.company) {
+        lines.push(`${exp.role}${exp.company ? ' - ' + exp.company : ''} (${exp.startDate} - ${exp.endDate})`);
+        if (exp.description) lines.push(exp.description);
+        lines.push('');
+      }
+    }
+  }
+  if (data.education.some((e) => e.degree || e.institution)) {
+    lines.push('EDUCATION');
+    for (const edu of data.education) {
+      if (edu.degree || edu.institution) {
+        lines.push(`${edu.degree}${edu.institution ? ' - ' + edu.institution : ''} (${edu.startDate} - ${edu.endDate})`);
+        if (edu.description) lines.push(edu.description);
+        lines.push('');
+      }
+    }
+  }
+  if (data.skills.length > 0) { lines.push('SKILLS'); lines.push(data.skills.join(', ')); lines.push(''); }
+  if (data.projects.some((p) => p.name)) {
+    lines.push('PROJECTS');
+    for (const proj of data.projects) {
+      if (proj.name) { lines.push(proj.name); if (proj.description) lines.push(proj.description); if (proj.link) lines.push(proj.link); lines.push(''); }
+    }
+  }
+  if (data.certifications.length > 0) { lines.push('CERTIFICATIONS'); lines.push(data.certifications.join('\n')); lines.push(''); }
+  if (data.achievements.some((a) => a.title)) {
+    lines.push('ACHIEVEMENTS');
+    for (const ach of data.achievements) {
+      if (ach.title) { lines.push(ach.title); if (ach.description) lines.push(ach.description); lines.push(''); }
+    }
+  }
+  return lines.join('\n');
+}
+
+function formatResumeAsHTML(data: ResumeData, template: typeof TEMPLATES[0]): string {
+  const c = template.colors;
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${data.name} - Resume</title><style>
+  body { font-family: 'Georgia', serif; max-width: 800px; margin: 0 auto; padding: 40px; color: ${c.text}; }
+  h1 { color: ${c.primary}; margin: 0 0 5px 0; font-size: 28px; }
+  .contact { font-size: 13px; color: ${c.light}; margin-bottom: 20px; }
+  h2 { color: ${c.primary}; font-size: 16px; text-transform: uppercase; border-bottom: 1px solid ${c.accent}; padding-bottom: 3px; margin: 20px 0 10px 0; }
+  .exp-item { margin-bottom: 12px; }
+  .exp-title { font-weight: bold; font-size: 14px; }
+  .exp-date { font-size: 12px; color: ${c.light}; }
+  .exp-desc { font-size: 13px; margin-top: 3px; }
+  .skills { display: flex; flex-wrap: wrap; gap: 8px; }
+  .skill { background: ${c.accent}20; color: ${c.primary}; padding: 3px 10px; border-radius: 4px; font-size: 12px; }
+</style></head><body>
+  <h1>${data.name}</h1>
+  <div class="contact">${[data.email, data.phone, data.location, data.linkedin, data.website].filter(Boolean).join(' | ')}</div>
+  ${data.summary ? `<h2>Summary</h2><p>${data.summary}</p>` : ''}
+  ${data.experience.some((e) => e.role || e.company) ? '<h2>Experience</h2>' + data.experience.filter((e) => e.role || e.company).map((e) => `<div class="exp-item"><div class="exp-title">${e.role}${e.company ? ' - ' + e.company : ''}</div><div class="exp-date">${e.startDate} - ${e.endDate}</div>${e.description ? `<div class="exp-desc">${e.description}</div>` : ''}</div>`).join('') : ''}
+  ${data.education.some((e) => e.degree || e.institution) ? '<h2>Education</h2>' + data.education.filter((e) => e.degree || e.institution).map((e) => `<div class="exp-item"><div class="exp-title">${e.degree}${e.institution ? ' - ' + e.institution : ''}</div><div class="exp-date">${e.startDate} - ${e.endDate}</div>${e.description ? `<div class="exp-desc">${e.description}</div>` : ''}</div>`).join('') : ''}
+  ${data.skills.length > 0 ? `<h2>Skills</h2><div class="skills">${data.skills.map((s) => `<span class="skill">${s}</span>`).join('')}</div>` : ''}
+  ${data.projects.some((p) => p.name) ? '<h2>Projects</h2>' + data.projects.filter((p) => p.name).map((p) => `<div class="exp-item"><div class="exp-title">${p.name}</div>${p.description ? `<div class="exp-desc">${p.description}</div>` : ''}${p.link ? `<div class="exp-desc">${p.link}</div>` : ''}</div>`).join('') : ''}
+  ${data.certifications.length > 0 ? `<h2>Certifications</h2><ul>${data.certifications.map((c2) => `<li>${c2}</li>`).join('')}</ul>` : ''}
+  ${data.achievements.some((a) => a.title) ? '<h2>Achievements</h2>' + data.achievements.filter((a) => a.title).map((a) => `<div class="exp-item"><div class="exp-title">${a.title}</div>${a.description ? `<div class="exp-desc">${a.description}</div>` : ''}</div>`).join('') : ''}
+</body></html>`;
+}
 
 const ResumePreview = forwardRef<HTMLDivElement, { data: ResumeData; template: typeof TEMPLATES[0] }>(
   function ResumePreview({ data, template }, ref) {
     const c = template.colors;
+    const contactItems = [data.email, data.phone, data.location, data.linkedin, data.website].filter(Boolean);
+
     return (
-      <div ref={ref} className="p-8" style={{ background: c.bg }}>
-        {/* Header */}
-        <div className="border-b-2 pb-4 mb-4" style={{ borderColor: c.primary }}>
-          <h1 className="text-3xl font-bold" style={{ color: c.primary }}>{data.name || 'Your Name'}</h1>
-          <div className="flex flex-wrap gap-3 mt-2 text-sm text-gray-600">
-            {data.email && <span>{data.email}</span>}
-            {data.phone && <span>• {data.phone}</span>}
-            {data.location && <span>• {data.location}</span>}
-            {data.linkedin && <span>• {data.linkedin}</span>}
-            {data.website && <span>• {data.website}</span>}
-          </div>
+      <div
+        ref={ref}
+        className="bg-white"
+        style={{
+          width: '210mm',
+          minHeight: '297mm',
+          padding: '15mm 18mm',
+          fontFamily: 'Georgia, "Times New Roman", serif',
+          color: c.text,
+          fontSize: '11pt',
+          lineHeight: '1.5',
+        }}
+      >
+        {/* Header - Name and Contact */}
+        <div style={{ textAlign: 'center', borderBottom: `2px solid ${c.primary}`, paddingBottom: '10px', marginBottom: '16px' }}>
+          <h1 style={{ fontSize: '24pt', fontWeight: 700, color: c.primary, margin: 0, letterSpacing: '1px', fontFamily: 'Georgia, serif' }}>
+            {data.name || 'YOUR NAME'}
+          </h1>
+          {contactItems.length > 0 && (
+            <div style={{ fontSize: '9.5pt', color: c.light, marginTop: '5px', display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {contactItems.map((item, i) => (
+                <span key={i}>
+                  {item}
+                  {i < contactItems.length - 1 && <span style={{ margin: '0 4px' }}>|</span>}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Summary */}
         {data.summary && (
-          <div className="mb-5">
-            <h2 className="text-lg font-bold mb-2 uppercase tracking-wide" style={{ color: c.primary }}>Summary</h2>
-            <p className="text-sm text-gray-700 leading-relaxed">{data.summary}</p>
-          </div>
+          <Section title="Professional Summary" color={c}>
+            <p style={{ margin: 0, fontSize: '10.5pt', textAlign: 'justify' }}>{data.summary}</p>
+          </Section>
         )}
 
         {/* Experience */}
-        {data.experience.length > 0 && data.experience.some((e) => e.role || e.company) && (
-          <div className="mb-5">
-            <h2 className="text-lg font-bold mb-2 uppercase tracking-wide" style={{ color: c.primary }}>Experience</h2>
+        {data.experience.some((e) => e.role || e.company) && (
+          <Section title="Work Experience" color={c}>
             {data.experience.filter((e) => e.role || e.company).map((exp) => (
-              <div key={exp.id} className="mb-3">
-                <div className="flex justify-between items-baseline">
-                  <h3 className="font-semibold text-gray-900 text-sm">{exp.role}{exp.company ? ` — ${exp.company}` : ''}</h3>
-                  <span className="text-xs text-gray-500">{exp.startDate} {exp.endDate && `— ${exp.endDate}`}</span>
+              <div key={exp.id} style={{ marginBottom: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <span style={{ fontWeight: 700, fontSize: '11pt', color: c.text }}>
+                    {exp.role}{exp.company ? `, ${exp.company}` : ''}
+                  </span>
+                  <span style={{ fontSize: '9.5pt', color: c.light, fontStyle: 'italic' }}>
+                    {exp.startDate}{exp.endDate ? ` — ${exp.endDate}` : ''}
+                  </span>
                 </div>
-                {exp.description && <p className="text-sm text-gray-600 mt-1">{exp.description}</p>}
+                {exp.description && (
+                  <p style={{ margin: '3px 0 0 0', fontSize: '10pt', color: c.text }}>{exp.description}</p>
+                )}
               </div>
             ))}
-          </div>
+          </Section>
         )}
 
         {/* Education */}
-        {data.education.length > 0 && data.education.some((e) => e.degree || e.institution) && (
-          <div className="mb-5">
-            <h2 className="text-lg font-bold mb-2 uppercase tracking-wide" style={{ color: c.primary }}>Education</h2>
+        {data.education.some((e) => e.degree || e.institution) && (
+          <Section title="Education" color={c}>
             {data.education.filter((e) => e.degree || e.institution).map((edu) => (
-              <div key={edu.id} className="mb-2">
-                <div className="flex justify-between items-baseline">
-                  <h3 className="font-semibold text-gray-900 text-sm">{edu.degree}{edu.institution ? `, ${edu.institution}` : ''}</h3>
-                  <span className="text-xs text-gray-500">{edu.startDate} {edu.endDate && `— ${edu.endDate}`}</span>
+              <div key={edu.id} style={{ marginBottom: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <span style={{ fontWeight: 700, fontSize: '11pt' }}>
+                    {edu.degree}{edu.institution ? `, ${edu.institution}` : ''}
+                  </span>
+                  <span style={{ fontSize: '9.5pt', color: c.light, fontStyle: 'italic' }}>
+                    {edu.startDate}{edu.endDate ? ` — ${edu.endDate}` : ''}
+                  </span>
                 </div>
-                {edu.description && <p className="text-sm text-gray-600 mt-0.5">{edu.description}</p>}
+                {edu.description && (
+                  <p style={{ margin: '2px 0 0 0', fontSize: '10pt', color: c.light }}>{edu.description}</p>
+                )}
               </div>
             ))}
-          </div>
+          </Section>
         )}
 
         {/* Skills */}
         {data.skills.length > 0 && (
-          <div className="mb-5">
-            <h2 className="text-lg font-bold mb-2 uppercase tracking-wide" style={{ color: c.primary }}>Skills</h2>
-            <div className="flex flex-wrap gap-2">
+          <Section title="Skills" color={c}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
               {data.skills.map((skill) => (
-                <span key={skill} className="px-2.5 py-1 rounded text-xs font-medium" style={{ background: c.accent + '20', color: c.primary }}>
+                <span key={skill} style={{
+                  background: c.accent + '18',
+                  color: c.primary,
+                  padding: '3px 10px',
+                  borderRadius: '3px',
+                  fontSize: '10pt',
+                  fontWeight: 500,
+                }}>
                   {skill}
                 </span>
               ))}
             </div>
-          </div>
+          </Section>
         )}
 
         {/* Projects */}
-        {data.projects.length > 0 && data.projects.some((p) => p.name) && (
-          <div className="mb-5">
-            <h2 className="text-lg font-bold mb-2 uppercase tracking-wide" style={{ color: c.primary }}>Projects</h2>
+        {data.projects.some((p) => p.name) && (
+          <Section title="Projects" color={c}>
             {data.projects.filter((p) => p.name).map((proj) => (
-              <div key={proj.id} className="mb-2">
-                <h3 className="font-semibold text-gray-900 text-sm">
-                  {proj.name}
-                  {proj.link && <span className="text-xs text-gray-500 ml-2">{proj.link}</span>}
-                </h3>
-                {proj.description && <p className="text-sm text-gray-600 mt-0.5">{proj.description}</p>}
+              <div key={proj.id} style={{ marginBottom: '8px' }}>
+                <span style={{ fontWeight: 700, fontSize: '11pt' }}>{proj.name}</span>
+                {proj.link && <span style={{ fontSize: '9.5pt', color: c.light, marginLeft: '8px' }}>{proj.link}</span>}
+                {proj.description && (
+                  <p style={{ margin: '2px 0 0 0', fontSize: '10pt' }}>{proj.description}</p>
+                )}
               </div>
             ))}
-          </div>
+          </Section>
         )}
 
         {/* Certifications */}
         {data.certifications.length > 0 && (
-          <div>
-            <h2 className="text-lg font-bold mb-2 uppercase tracking-wide" style={{ color: c.primary }}>Certifications</h2>
-            <ul className="list-disc list-inside text-sm text-gray-700 space-y-0.5">
-              {data.certifications.map((cert) => (
-                <li key={cert}>{cert}</li>
+          <Section title="Certifications" color={c}>
+            <ul style={{ margin: 0, paddingLeft: '18px', listStyleType: 'disc' }}>
+              {data.certifications.map((cert, i) => (
+                <li key={i} style={{ fontSize: '10.5pt', marginBottom: '3px' }}>{cert}</li>
               ))}
             </ul>
-          </div>
+          </Section>
+        )}
+
+        {/* Achievements */}
+        {data.achievements.some((a) => a.title) && (
+          <Section title="Achievements" color={c}>
+            {data.achievements.filter((a) => a.title).map((ach) => (
+              <div key={ach.id} style={{ marginBottom: '8px' }}>
+                <span style={{ fontWeight: 700, fontSize: '11pt' }}>{ach.title}</span>
+                {ach.description && (
+                  <p style={{ margin: '2px 0 0 0', fontSize: '10pt' }}>{ach.description}</p>
+                )}
+              </div>
+            ))}
+          </Section>
         )}
       </div>
     );
   }
 );
+
+function Section({ title, color, children }: { title: string; color: typeof TEMPLATES[0]['colors']; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: '14px' }}>
+      <h2 style={{
+        fontSize: '12pt',
+        fontWeight: 700,
+        color: color.primary,
+        textTransform: 'uppercase',
+        letterSpacing: '1.5px',
+        borderBottom: `1px solid ${color.accent}40`,
+        paddingBottom: '4px',
+        marginBottom: '8px',
+        fontFamily: 'Georgia, serif',
+      }}>
+        {title}
+      </h2>
+      {children}
+    </div>
+  );
+}

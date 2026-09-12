@@ -1,17 +1,17 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Profile } from '@/types';
-import { generateOTP, formatPhone, validatePhone } from '@/lib/utils';
+import { formatPhone, validatePhone } from '@/lib/utils';
 
 interface AuthContextType {
   profile: Profile | null;
   loading: boolean;
-  sendOTP: (phone: string) => Promise<{ success: boolean; error?: string }>;
+  sendOTP: (phone: string) => Promise<{ success: boolean; error?: string; demoCode?: string }>;
   verifyOTP: (phone: string, code: string) => Promise<{ success: boolean; error?: string; existing?: boolean }>;
   createProfile: (name: string) => Promise<{ success: boolean; error?: string }>;
   updateName: (name: string) => Promise<{ success: boolean; error?: string }>;
   updateAvatar: (avatarUrl: string) => Promise<{ success: boolean; error?: string }>;
-  changePhone: (newPhone: string) => Promise<{ success: boolean; error?: string }>;
+  changePhone: (newPhone: string) => Promise<{ success: boolean; error?: string; demoCode?: string }>;
   confirmChangePhone: (code: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   deleteAccount: () => Promise<{ success: boolean; error?: string }>;
@@ -57,32 +57,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(false);
   }
 
-  async function sendOTP(phone: string): Promise<{ success: boolean; error?: string }> {
+  async function sendOTP(phone: string): Promise<{ success: boolean; error?: string; demoCode?: string }> {
     if (!validatePhone(phone)) {
       return { success: false, error: 'Please enter a valid phone number' };
     }
 
     const formatted = formatPhone(phone);
 
-    const code = generateOTP();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-whatsapp-otp`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ phone: formatted }),
+        }
+      );
 
-    const { error } = await supabase.from('otp_codes').insert({
-      phone: formatted,
-      code,
-      expires_at: expiresAt,
-      verified: false,
-    });
+      if (!response.ok) {
+        const errData = await response.json();
+        return { success: false, error: errData.error || 'Failed to send OTP' };
+      }
 
-    if (error) {
-      return { success: false, error: error.message };
+      const data = await response.json();
+      if (data.error) return { success: false, error: data.error };
+
+      localStorage.setItem('aura_pending_phone', formatted);
+      setPendingPhone(formatted);
+
+      if (data.code) {
+        localStorage.setItem('aura_demo_otp', data.code);
+        return { success: true, demoCode: data.code };
+      }
+
+      localStorage.removeItem('aura_demo_otp');
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error' };
     }
-
-    localStorage.setItem('aura_demo_otp', code);
-    localStorage.setItem('aura_pending_phone', formatted);
-    setPendingPhone(formatted);
-
-    return { success: true };
   }
 
   async function verifyOTP(phone: string, code: string): Promise<{ success: boolean; error?: string; existing?: boolean }> {
@@ -187,7 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { success: true };
   }
 
-  async function changePhone(newPhone: string): Promise<{ success: boolean; error?: string }> {
+  async function changePhone(newPhone: string): Promise<{ success: boolean; error?: string; demoCode?: string }> {
     if (!profile) return { success: false, error: 'Not logged in' };
 
     const formatted = formatPhone(newPhone);

@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { Phone, Shield, ArrowRight, Loader2, RefreshCw, User, Sparkles } from 'lucide-react';
+import { Phone, Shield, ArrowRight, Loader2, RefreshCw, User, Sparkles, MessageCircle } from 'lucide-react';
 
 type Stage = 'phone' | 'otp' | 'name';
 
 export default function Login() {
-  const { sendOTP, verifyOTP, createProfile, pendingPhone, isNewUser, setIsNewUser } = useAuth();
+  const { sendOTP, verifyOTP, createProfile, pendingPhone, setIsNewUser } = useAuth();
   const [stage, setStage] = useState<Stage>('phone');
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
@@ -13,8 +13,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
-
-  const demoOTP = localStorage.getItem('aura_demo_otp') || '';
+  const [demoCode, setDemoCode] = useState<string | null>(null);
 
   function startResendCooldown() {
     setResendCooldown(30);
@@ -37,6 +36,11 @@ export default function Login() {
     if (result.success) {
       setStage('otp');
       startResendCooldown();
+      if (result.demoCode) {
+        setDemoCode(result.demoCode);
+      } else {
+        setDemoCode(null);
+      }
     } else {
       setError(result.error || 'Something went wrong');
     }
@@ -66,6 +70,11 @@ export default function Login() {
     setLoading(false);
     if (result.success) {
       startResendCooldown();
+      if (result.demoCode) {
+        setDemoCode(result.demoCode);
+      } else {
+        setDemoCode(null);
+      }
     } else {
       setError(result.error || 'Failed to resend');
     }
@@ -89,6 +98,7 @@ export default function Login() {
     setStage('phone');
     setOtp('');
     setError('');
+    setDemoCode(null);
     setIsNewUser(false);
   }
 
@@ -134,6 +144,10 @@ export default function Login() {
                     className="w-full px-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                     onKeyDown={(e) => e.key === 'Enter' && handleSendOTP()}
                   />
+                  <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    OTP will be sent to your WhatsApp
+                  </p>
                 </div>
 
                 {error && (
@@ -166,14 +180,14 @@ export default function Login() {
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900">Enter OTP</h2>
                 <p className="text-gray-500 text-sm mt-1">
-                  Sent to {pendingPhone || phone}
+                  Sent to your WhatsApp at {pendingPhone || phone}
                 </p>
               </div>
 
-              {demoOTP && (
-                <div className="mb-4 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
-                  <p className="text-xs text-blue-700">
-                    <span className="font-semibold">Demo OTP:</span> {demoOTP}
+              {demoCode && (
+                <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                  <p className="text-xs text-amber-700">
+                    <span className="font-semibold">Demo mode:</span> WhatsApp API not configured. Your OTP is <span className="font-bold">{demoCode}</span>
                   </p>
                 </div>
               )}

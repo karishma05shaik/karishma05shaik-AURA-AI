@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.interview-questions]
 verify_jwt = false
+
+[functions.send-whatsapp-otp]
+verify_jwt = false
