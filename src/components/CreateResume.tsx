@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { ResumeData, ExperienceItem, EducationItem, ProjectItem } from '@/types';
 import {
   Plus, Trash2, Download, Share2, Edit3, FileDown, ChevronLeft, ChevronRight,
-  Briefcase, GraduationCap, Wrench, FolderGit2, Award, User, Check,
+  Briefcase, GraduationCap, Wrench, FolderGit2, Award, User, Check, X,
 } from 'lucide-react';
 
 interface CreateResumeProps {
@@ -163,7 +163,7 @@ export default function CreateResume({ editingResume, onSaved, onCancel }: Creat
       heightLeft -= pdfHeight;
     }
 
-    pdf.download(`${title.replace(/\s+/g, '_')}.pdf`);
+    pdf.save(`${title.replace(/\s+/g, '_')}.pdf`);
   }
 
   function handleExport(format: string) {
